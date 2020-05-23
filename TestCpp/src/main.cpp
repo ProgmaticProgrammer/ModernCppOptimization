@@ -54,8 +54,11 @@ int main() {
 namespace msm = boost::msm;
 namespace mpl = boost::mpl;
 
-namespace {
-// events
+namespace fsm{
+
+///////////////////////////////////////////////////
+namespace events {
+
 struct play {};
 struct end_pause {};
 struct stop {};
@@ -63,16 +66,22 @@ struct pause {};
 struct open_close {};
 
 // A "complicated" event type that carries some data.
-enum DiskTypeEnum { DISK_CD = 0, DISK_DVD = 1 };
+enum class DiskType { DISK_CD = 0, DISK_DVD = 1 };
 struct cd_detected {
-  cd_detected(std::string name, DiskTypeEnum diskType)
+  cd_detected(std::string name, DiskType diskType)
       : name(name), disc_type(diskType) {}
 
   std::string name;
-  DiskTypeEnum disc_type;
+  DiskType disc_type;
 };
 
-// front-end: define the FSM structure
+}
+
+///////////////////////////////////////////////////
+namespace front_end {
+
+using DiskType = events::DiskType;
+// define the FSM structure
 struct player_ : public msm::front::state_machine_def<player_> {
   template <class Event, class FSM>
   void on_entry(Event const&, FSM&) {
@@ -140,27 +149,27 @@ struct player_ : public msm::front::state_machine_def<player_> {
   typedef Empty initial_state;
 
   // transition actions
-  void start_playback(play const&) { std::cout << "player::start_playback\n"; }
-  void open_drawer(open_close const&) { std::cout << "player::open_drawer\n"; }
-  void close_drawer(open_close const&) {
+  void start_playback(events::play const&) { std::cout << "player::start_playback\n"; }
+  void open_drawer(events::open_close const&) { std::cout << "player::open_drawer\n"; }
+  void close_drawer(events::open_close const&) {
     std::cout << "player::close_drawer\n";
   }
-  void store_cd_info(cd_detected const&) {
+  void store_cd_info(events::cd_detected const&) {
     std::cout << "player::store_cd_info\n";
   }
-  void stop_playback(stop const&) { std::cout << "player::stop_playback\n"; }
-  void pause_playback(pause const&) { std::cout << "player::pause_playback\n"; }
-  void resume_playback(end_pause const&) {
+  void stop_playback(events::stop const&) { std::cout << "player::stop_playback\n"; }
+  void pause_playback(events::pause const&) { std::cout << "player::pause_playback\n"; }
+  void resume_playback(events::end_pause const&) {
     std::cout << "player::resume_playback\n";
   }
-  void stop_and_open(open_close const&) {
+  void stop_and_open(events::open_close const&) {
     std::cout << "player::stop_and_open\n";
   }
-  void stopped_again(stop const&) { std::cout << "player::stopped_again\n"; }
+  void stopped_again(events::stop const&) { std::cout << "player::stopped_again\n"; }
   // guard conditions
-  bool good_disk_format(cd_detected const& evt) {
-    // to test a guard condition, let's say we understand only CDs, not DVD
-    if (evt.disc_type != DISK_CD) {
+  bool good_disk_format(events::cd_detected const& evt) {
+    // to test a guard condition, let's say we understand only CDs, not DVD    
+    if (evt.disc_type != DiskType::DISK_CD) {
       std::cout << "wrong disk, sorry" << std::endl;
       return false;
     }
@@ -168,7 +177,7 @@ struct player_ : public msm::front::state_machine_def<player_> {
   }
   // used to show a transition conflict. This guard will simply deactivate one
   // transition and thus solve the conflict
-  bool auto_start(cd_detected const&) { return false; }
+  bool auto_start(events::cd_detected const&) { return false; }
 
   typedef player_ p;  // makes transition table cleaner
 
@@ -176,23 +185,23 @@ struct player_ : public msm::front::state_machine_def<player_> {
   struct transition_table : mpl::vector<
   //    Start     Event        Target      Action                      Guard
   //   +---------+------------+-----------+---------------------------+----------------------------+
-  a_row< Stopped , play       ,  Playing  , &player_::start_playback                               >,
-  a_row< Stopped , open_close ,  Open     , &player_::open_drawer                                  >,
-   _row< Stopped , stop       ,  Stopped                                                           >,
+  a_row< Stopped , events::play       ,  Playing  , &player_::start_playback                               >,
+  a_row< Stopped , events::open_close ,  Open     , &player_::open_drawer                                  >,
+   _row< Stopped , events::stop       ,  Stopped                                                           >,
   //   +---------+------------+-----------+---------------------------+----------------------------+
-  a_row< Open    , open_close ,  Empty    , &player_::close_drawer                                 >,
+  a_row< Open    , events::open_close ,  Empty    , &player_::close_drawer                                 >,
   //   +---------+------------+-----------+---------------------------+----------------------------+
-  a_row< Empty   , open_close ,  Open     , &player_::open_drawer                                  >,
-    row< Empty   , cd_detected,  Stopped  , &player_::store_cd_info   , &player_::good_disk_format >,
-    row< Empty   , cd_detected,  Playing  , &player_::store_cd_info   , &player_::auto_start       >,
+  a_row< Empty   , events::open_close ,  Open     , &player_::open_drawer                                  >,
+    row< Empty   , events::cd_detected,  Stopped  , &player_::store_cd_info   , &player_::good_disk_format >,
+    row< Empty   , events::cd_detected,  Playing  , &player_::store_cd_info   , &player_::auto_start       >,
   //   +---------+------------+-----------+---------------------------+----------------------------+
-  a_row< Playing , stop       ,  Stopped  , &player_::stop_playback                                >,
-  a_row< Playing , pause      ,  Paused   , &player_::pause_playback                               >,
-  a_row< Playing , open_close ,  Open     , &player_::stop_and_open                                >,
+  a_row< Playing , events::stop       ,  Stopped  , &player_::stop_playback                                >,
+  a_row< Playing , events::pause      ,  Paused   , &player_::pause_playback                               >,
+  a_row< Playing , events::open_close ,  Open     , &player_::stop_and_open                                >,
   //   +---------+------------+-----------+---------------------------+----------------------------+
-  a_row< Paused  , end_pause  ,  Playing  , &player_::resume_playback                              >,
-  a_row< Paused  , stop       ,  Stopped  , &player_::stop_playback                                >,
-  a_row< Paused  , open_close ,  Open     , &player_::stop_and_open                                >
+  a_row< Paused  , events::end_pause  ,  Playing  , &player_::resume_playback                              >,
+  a_row< Paused  , events::stop       ,  Stopped  , &player_::stop_playback                                >,
+  a_row< Paused  , events::open_close ,  Open     , &player_::stop_and_open                                >
   //   +---------+------------+-----------+---------------------------+----------------------------+
   > {};
   // Replaces the default no-transition response.
@@ -202,12 +211,22 @@ struct player_ : public msm::front::state_machine_def<player_> {
               << typeid(e).name() << std::endl;
   }
 };
-// Pick a back-end
-typedef msm::back::state_machine<player_> player;
 
+}
+///////////////////////////////////////////////////
+//back-end
+using player_ = fsm::front_end::player_;
+typedef msm::back::state_machine<player_> player;
+}  // namespace fsm
+
+///////////////////////////////////////////////////
 //
 // Testing utilities.
 //
+namespace events = fsm::events;
+using player = fsm::player;
+using DiskType = fsm::events::DiskType;
+
 static char const* const state_names[] = {"Stopped", "Open", "Empty", "Playing",
                                           "Paused"};
 void pstate(player const& p) {
@@ -220,35 +239,34 @@ void test() {
   // start of the SM
   p.start();
   // go to Open, call on_exit on Empty, then action, then on_entry on Open
-  p.process_event(open_close());
+  p.process_event(events::open_close{});
   pstate(p);
-  p.process_event(open_close());
+  p.process_event(events::open_close{});
   pstate(p);
   // will be rejected, wrong disk type
-  p.process_event(cd_detected("louie, louie", DISK_DVD));
+  p.process_event(events::cd_detected{"louie, louie", DiskType::DISK_DVD});
   pstate(p);
-  p.process_event(cd_detected("louie, louie", DISK_CD));
+  p.process_event(events::cd_detected{"louie, louie", DiskType::DISK_CD});
   pstate(p);
-  p.process_event(play());
+  p.process_event(events::play{});
 
   // at this point, Play is active
-  p.process_event(pause());
+  p.process_event(events::pause{});
   pstate(p);
   // go back to Playing
-  p.process_event(end_pause());
+  p.process_event(events::end_pause{});
   pstate(p);
-  p.process_event(pause());
+  p.process_event(events::pause{});
   pstate(p);
-  p.process_event(stop());
+  p.process_event(events::stop{});
   pstate(p);
   // event leading to the same state
   // no action method called as it is not present in the transition table
-  p.process_event(stop());
+  p.process_event(events::stop{});
   pstate(p);
   std::cout << "stop fsm" << std::endl;
   p.stop();
 }
-}  // namespace
 
 int main() {
   test();
