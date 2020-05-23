@@ -780,3 +780,4 @@ TestCpp/Release/src/subdir.mk
 TestCpp/Release/TestCpp.elf
 TestCpp/Release/TestCpp.hex
 TestCpp/Release/TestCpp.map
+/.metadata/
