@@ -164,7 +164,7 @@ class D : public B {  // some derived class
   friend shared_ptr<T> B::create();
 };
 
-int main() {
+int sharedptr_main() {
   using std::shared_ptr;
 
   shared_ptr<B> p = B::create<D>();  // creating a D object
