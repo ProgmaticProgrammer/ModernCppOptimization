@@ -25,6 +25,7 @@ void throw_exception(std::exception const&) {
 
 namespace msm = boost::msm;
 namespace mpl = boost::mpl;
+namespace front = boost::msm::front;
 
 namespace mqtt {
 namespace detail {
@@ -67,18 +68,22 @@ enum class connection_status_t : uint8_t {
   DISCONNECTING = 0x02,
   FAILURE = 0x80,
 };
-
-namespace events {
+//serializable
+struct Packet {};
 
 struct connect {};
-struct publish_out {};
-struct subscribe {};
-struct unsubscribe {};
+struct publish_out {
+  Packet publish;
+};
+struct subscribe {
+  Packet subscribe;
+};
+struct unsubscribe {
+  Packet unsubscribe;
+};
 struct disconnect {};
 struct shutdown_timeout {};
 struct none {};
-
-}  // namespace events
 
 struct client_ : public msm::front::state_machine_def<client_> {};
 
@@ -109,42 +114,40 @@ struct client_machine_ : public machine_base<client_machine_> {
 
   struct ShuttingDown : public State {
     // defer connect events until the next state
-    using deferred_events = mpl::vector<events::connect>;
+    using deferred_events = mpl::vector<connect>;
   };
   struct None : public State {};
 
   struct send_packet {
     template <class Fsm, class SourceState, class TargetState>
-    void operator()(events::publish_out const& evt, Fsm& fsm, SourceState&,
+    void operator()(publish_out const& evt, Fsm& fsm, SourceState&,
                     TargetState&) {
       fsm.client_->send(evt.publish);
     }
     template <class Fsm, class SourceState, class TargetState>
-    void operator()(events::subscribe const& evt, Fsm& fsm, SourceState&,
+    void operator()(subscribe const& evt, Fsm& fsm, SourceState&,
                     TargetState&) {
       fsm.client_->send(evt.subscribe);
     }
     template <class Fsm, class SourceState, class TargetState>
-    void operator()(events::unsubscribe const& evt, Fsm& fsm, SourceState&,
+    void operator()(unsubscribe const& evt, Fsm& fsm, SourceState&,
                     TargetState&) {
       fsm.client_->send(evt.unsubscribe);
     }
   };
-  using msm::front::none;
-  using msm::front::Row;
+  using none = msm::front::none;
   struct transition_table
       : TransitionTable<
             // Start Event Next Action Guard
             // +------------------+---------------------------+------------------+----------------+----------
-            Row<NotConnected, events::connect, ConnectBroker, none, none>,
-            Row<ConnectBroker, none, Connected, none, none>,
-            Row<Connected, events::publish_out, none, send_packet, none>,
-            Row<Connected, events::subscribe, none, send_packet, none>,
-            Row<Connected, events::unsubscribe, none, send_packet, none>,
-            Row<Connected, events::connect, none, none, none>,
-            Row<Connected, events::disconnect, ShuttingDown, none, none>,
-            Row<ShuttingDown, events::shutdown_timeout, NotConnected, none,
-                none>
+            front::Row<NotConnected, connect, ConnectBroker, none, none>,
+            front::Row<ConnectBroker, none, Connected, none, none>,
+            front::Row<Connected, publish_out, none, send_packet, none>,
+            front::Row<Connected, subscribe, none, send_packet, none>,
+            front::Row<Connected, unsubscribe, none, send_packet, none>,
+            front::Row<Connected, connect, none, none, none>,
+            front::Row<Connected, disconnect, ShuttingDown, none, none>,
+            front::Row<ShuttingDown, shutdown_timeout, NotConnected, none, none>
             // +------------------+---------------------------+------------------+----------------+----------
             > {};
   template <typename... T>
