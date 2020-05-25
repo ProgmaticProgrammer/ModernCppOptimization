@@ -1,41 +1,3 @@
-//============================================================================
-// Name        : main.cpp
-// Author      : Lei
-// Version     :
-// Copyright   : Your copyright notice
-// Description : Hello World in C++
-//============================================================================
-/*
-#include <cstdint>
-#include <initializer_list>
-
-extern "C" {
-#include "i2c.h"
-}
-
-const auto OLED_I2C_ADDRESS = reinterpret_cast<uint32_t*>(0x01234567);
-
-int oled_write(uint8_t const* bytes, int count) {
-  int tx = i2c_master_tx(OLED_I2C_ADDRESS, const_cast<uint8_t*>(bytes), count);
-  if (tx < 1) return -1;
-  return tx;
-}
-
-int oled_write(std::initializer_list<uint8_t> bytes) {
-  return oled_write(bytes.begin(), bytes.size());
-}
-
-int main() {
-  oled_write({0x00, 0xAF});
-  oled_write({0x00, 0x8D, 0x14});
-  oled_write({0x00, 0xA8, 0x0F});
-  oled_write({0x00, 0xDA, 0x02});
-  oled_write({0x00, 0x81, 0xFF});
-  oled_write({0x00, 0x82, 0xFF});
-  oled_write({0x00, 0x83, 0xFF});
-  return 0;
-}
-*/
 // Copyright 2010 Christophe Henry
 // henry UNDERSCORE christophe AT hotmail DOT com
 // This is an extended version of the state machine available in the boost::mpl
@@ -52,9 +14,13 @@ int main() {
 #include <boost/msm/front/state_machine_def.hpp>
 #define BOOST_NO_EXCEPTIONS
 #include <boost/throw_exception.hpp>
-void boost::throw_exception(std::exception const & e){
-while(1);
+namespace boost {
+void throw_exception(std::exception const&) {
+  while (1)
+    ;
 }
+}  // namespace boost
+
 namespace msm = boost::msm;
 namespace mpl = boost::mpl;
 
@@ -225,8 +191,8 @@ struct player_ : public msm::front::state_machine_def<player_> {
   // Replaces the default no-transition response.
   template <class FSM, class Event>
   void no_transition(Event const& e, FSM&, int state) {
-    std::cout << "no transition from state " << state << " on event " << std::endl;
-             /* << typeid(e).name()*/
+    std::cout << "no transition from state " << state << " on event "
+              << std::endl;
   }
 };
 
@@ -285,27 +251,3 @@ void test() {
   std::cout << "stop fsm" << std::endl;
   p.stop();
 }
-#ifdef __TM4C123GH6PM__
-#include <Arduino.h>
-
-void setup() {
-  // initialize LED digital pin as an output.
-  pinMode(RED_LED, OUTPUT);
-}
-
-void loop() {
-  // turn the LED on (HIGH is the voltage level)
-  digitalWrite(RED_LED, HIGH);
-  // wait for a second
-  delay(1000);
-  // turn the LED off by making the voltage LOW
-  digitalWrite(RED_LED, LOW);
-  // wait for a second
-  delay(1000);
-}
-#else
-int main() {
-  test();
-  return 0;
-}
-#endif  // PART_TM4C123GH6PM

@@ -120,13 +120,15 @@ main (int argc, char* argv[])
 
 
 #include <iostream>
-
-#define BOOST_NO_EXCEPTIONS
+#include <exception>
 #include <boost/throw_exception.hpp>
-void boost::throw_exception(std::exception const & e){
+#define BOOST_NO_EXCEPTIONS
+
+namespace boost {
+void throw_exception(std::exception const &){
 while(1);
 }
-
+}
 // back-end
 #include <boost/msm/back/state_machine.hpp>
 // front-end
@@ -301,7 +303,7 @@ struct player_ : public msm::front::state_machine_def<player_> {
             > {};
   // Replaces the default no-transition response.
   template <class FSM, class Event>
-  void no_transition(Event const& e, FSM&, int state) {
+  void no_transition(Event const&, FSM&, int state) {
     std::cout << "no transition from state " << state << " on event " << std::endl;
               /*<< typeid(e).name()*/
   }
@@ -381,8 +383,22 @@ void loop() {
   delay(1000);
 }
 #else
+
+#include <memory>
+#include <vector>
+
+class Resource {};
+using ResourceType = Resource;
+using ResourceTypePtr = std::unique_ptr<ResourceType>;
+using ResourceVector = std::vector<ResourceTypePtr>;
+
 int main() {
-  test();
+ResourceTypePtr resource{std::make_unique<ResourceType>()};
+ResourceVector aCollectionOfResources;
+
+
+aCollectionOfResources.push_back(std::move(resource));
+  //test();
   return 0;
 }
 #endif  // PART_TM4C123GH6PM

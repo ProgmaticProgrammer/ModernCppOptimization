@@ -4,7 +4,7 @@
  *  Created on: 23/05/2020
  *      Author: Owner
  */
-//#include <string>
+#include <string>
 #include <vector>
 
 #include "mqtt_detail.hpp"

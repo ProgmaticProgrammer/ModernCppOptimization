@@ -8,10 +8,23 @@
 #ifndef MQTT_DETAIL_HPP_
 #define MQTT_DETAIL_HPP_
 
-//#include <vector>
-#include <boost\mpl\vector.hpp>
-#include <boost\msm\back\state_machine.hpp>
-#include <boost\msm\front\state_machine_def.hpp>
+#include <iostream>
+// back-end
+#include <boost/msm/back/state_machine.hpp>
+// front-end
+#include <boost/msm/front/functor_row.hpp>
+#include <boost/msm/front/state_machine_def.hpp>
+#define BOOST_NO_EXCEPTIONS
+#include <boost/throw_exception.hpp>
+namespace boost {
+void throw_exception(std::exception const&) {
+  while (1)
+    ;
+}
+}  // namespace boost
+
+namespace msm = boost::msm;
+namespace mpl = boost::mpl;
 
 namespace mqtt {
 namespace detail {
@@ -44,10 +57,9 @@ struct client_interface_wrapper : client_interface {
 };
 
 template <typename... T>
-using TransitionTable = boost::mpl::vector<T...>;
+using TransitionTable = mpl::vector<T...>;
 
-// struct State {};
-using State = boost::msm::front::state<>;
+using State = msm::front::state<>;
 
 enum class connection_status_t : uint8_t {
   DISCONNECTED = 0x00,
@@ -56,67 +68,92 @@ enum class connection_status_t : uint8_t {
   FAILURE = 0x80,
 };
 
-enum class event : uint8_t {
-  connect = 0x00,
-  publish_out = 0x01,
-  subscribe = 0x02,
-  unsubscribe = 0x04,
-  disconnect = 0x10,
-  shutdown_timeout = 0x20,
-};
+namespace events {
 
-struct NotConnected : public State {
-  template <class Event, class FSM>
-  void on_entry(Event const&, FSM& fsm) {
-    fsm.client_->update_connection_status(connection_status_t::DISCONNECTED);
-  }
-};
+struct connect {};
+struct publish_out {};
+struct subscribe {};
+struct unsubscribe {};
+struct disconnect {};
+struct shutdown_timeout {};
+struct none {};
 
-struct Connected : public State {
-  template <class Event, class FSM>
-  void on_entry(Event const&, FSM& fsm) {
-    fsm.client_->update_connection_status(connection_status_t::CONNECTED);
-  }
-  template <class Event, class FSM>
-  void on_exit(Event const&, FSM& fsm) {
-    fsm.client_->update_connection_status(connection_status_t::DISCONNECTING);
-  }
-};
-struct ConnectBroker : public State {};
+}  // namespace events
 
-struct ShuttingDown : public State {
-  // defer connect events until the next state
-  using deferred_events = boost::mpl::vector<event::connect>;
-};
-
-struct transition_table
-    : TransitionTable<
-          // Start              Event                       Next               Action           Guard
-          // +------------------+---------------------------+------------------+----------------+----------
-          Row<NotConnected,     event::connect,             ConnectBroker,     none,            none>,
-          Row<ConnectBroker,    none,                       Connected,         none,            none>,
-          Row<Connected,        event::publish_out,         none,              send_packet,     none>,
-          Row<Connected,        event::subscribe,           none,              send_packet,     none>,
-          Row<Connected,        event::unsubscribe,         none,              send_packet,     none>,
-          Row<Connected,        event::connect,             none,              none,            none>,
-          Row<Connected,        event::disconnect,          ShuttingDown,      none,            none>,
-          Row<ShuttingDown,     event::shutdown_timeout,    NotConnected,      none,            none>
-          // +------------------+---------------------------+------------------+----------------+----------
-          > {};
-
-template <typename... T>
-using Submachines = meta::meta_list<T...>;
+struct client_ : public msm::front::state_machine_def<client_> {};
 
 template <typename Derived>
-struct machine_base : public boost::msm::front::state_machine_def<Derived> {
+struct machine_base : public msm::front::state_machine_def<Derived> {
   client_interface* client_ = nullptr;
 };
 
 struct client_machine_ : public machine_base<client_machine_> {
+  struct NotConnected : public State {
+    template <class Event, class FSM>
+    void on_entry(Event const&, FSM& fsm) {
+      fsm.client_->update_connection_status(connection_status_t::DISCONNECTED);
+    }
+  };
+
+  struct Connected : public State {
+    template <class Event, class FSM>
+    void on_entry(Event const&, FSM& fsm) {
+      fsm.client_->update_connection_status(connection_status_t::CONNECTED);
+    }
+    template <class Event, class FSM>
+    void on_exit(Event const&, FSM& fsm) {
+      fsm.client_->update_connection_status(connection_status_t::DISCONNECTING);
+    }
+  };
+  struct ConnectBroker : public State {};
+
+  struct ShuttingDown : public State {
+    // defer connect events until the next state
+    using deferred_events = mpl::vector<events::connect>;
+  };
+  struct None : public State {};
+
+  struct send_packet {
+    template <class Fsm, class SourceState, class TargetState>
+    void operator()(events::publish_out const& evt, Fsm& fsm, SourceState&,
+                    TargetState&) {
+      fsm.client_->send(evt.publish);
+    }
+    template <class Fsm, class SourceState, class TargetState>
+    void operator()(events::subscribe const& evt, Fsm& fsm, SourceState&,
+                    TargetState&) {
+      fsm.client_->send(evt.subscribe);
+    }
+    template <class Fsm, class SourceState, class TargetState>
+    void operator()(events::unsubscribe const& evt, Fsm& fsm, SourceState&,
+                    TargetState&) {
+      fsm.client_->send(evt.unsubscribe);
+    }
+  };
+  using msm::front::none;
+  using msm::front::Row;
+  struct transition_table
+      : TransitionTable<
+            // Start Event Next Action Guard
+            // +------------------+---------------------------+------------------+----------------+----------
+            Row<NotConnected, events::connect, ConnectBroker, none, none>,
+            Row<ConnectBroker, none, Connected, none, none>,
+            Row<Connected, events::publish_out, none, send_packet, none>,
+            Row<Connected, events::subscribe, none, send_packet, none>,
+            Row<Connected, events::unsubscribe, none, send_packet, none>,
+            Row<Connected, events::connect, none, none, none>,
+            Row<Connected, events::disconnect, ShuttingDown, none, none>,
+            Row<ShuttingDown, events::shutdown_timeout, NotConnected, none,
+                none>
+            // +------------------+---------------------------+------------------+----------------+----------
+            > {};
+  template <typename... T>
+  using Submachines = meta::meta_list<T...>;
+
   using submachines = Submachines<ConnectBroker>;
   using initial_state = NotConnected;
 };
-using client_machine = boost::msm::back::state_machine<client_machine_>;
+using client_machine = msm::back::state_machine<client_machine_>;
 
 }  // namespace detail
 }  // namespace mqtt
